@@ -34,7 +34,7 @@ jobs:
         id: sha256
         run: |
           VERSION=${{ steps.version.outputs.version }}
-          TARBALL_URL="https://github.com/manetu/security-token/archive/refs/tags/${VERSION}.tar.gz"
+          TARBALL_URL="https://github.com/ipaz-manetu/security-token/archive/refs/tags/${VERSION}.tar.gz"
           echo "Downloading source tarball from: $TARBALL_URL"
 
           curl -sL "$TARBALL_URL" -o source.tar.gz
@@ -57,11 +57,11 @@ jobs:
           # This formula builds from source using Go
           class ManetuSecurityToken < Formula
             desc "CLI to manage Manetu Service Account credentials within a PKCS#11 compatible HSM"
-            homepage "https://github.com/manetu/security-token"
-            url "https://github.com/manetu/security-token/archive/refs/tags/VERSION_PLACEHOLDER.tar.gz"
+            homepage "https://github.com/ipaz-manetu/security-token"
+            url "https://github.com/ipaz-manetu/security-token/archive/refs/tags/VERSION_PLACEHOLDER.tar.gz"
             sha256 "SHA256_PLACEHOLDER"
             license "MIT"
-            head "https://github.com/manetu/security-token.git", branch: "master"
+            head "https://github.com/ipaz-manetu/security-token.git", branch: "homebrew"
 
             depends_on "go" => :build
 
