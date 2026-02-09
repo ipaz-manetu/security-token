@@ -3,7 +3,9 @@
 PROJECT_NAME := manetu-security-token
 GOPROJECT := github.com/manetu/security-token
 
-VERSIONARGS := -X $(GOPROJECT)/version.GitCommit=$(shell git log -n1 --format=format:"%H")\
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+VERSIONARGS := -X $(GOPROJECT)/version.Version=$(VERSION) \
+			   -X $(GOPROJECT)/version.GitCommit=$(shell git log -n1 --format=format:"%H")\
 			   -X $(GOPROJECT)/version.GoVersion=$(shell go version | cut -d' ' -f3) \
 			   -X $(GOPROJECT)/version.BuildDate=$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
 

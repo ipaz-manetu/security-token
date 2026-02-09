@@ -1,0 +1,175 @@
+name: Release Go
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify go.mod
+        run: |
+          echo "Verifying go.mod syntax..."
+          go mod verify
+          go mod tidy
+          if [ -n "$(git diff go.mod go.sum)" ]; then
+            echo "Error: go.mod or go.sum has uncommitted changes"
+            git diff go.mod go.sum
+            exit 1
+          fi
+
+      - name: Check module name
+        run: |
+          MODULE=$(grep '^module' go.mod | awk '{print $2}')
+          echo "Module name: $MODULE"
+          if [ -z "$MODULE" ]; then
+            echo "Error: Could not determine module name from go.mod"
+            exit 1
+          fi
+
+      - name: Validate tag format
+        if: github.event_name == 'release'
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Release tag: $TAG"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Warning: Tag '$TAG' does not follow semantic versioning (vX.Y.Z)"
+            echo "Tags should follow semantic versioning"
+          fi
+
+  build-binaries:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    needs: validate-release
+    strategy:
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+            runner: ubuntu-latest
+          - goos: linux
+            goarch: arm64
+            runner: ubuntu-latest
+            cc: aarch64-linux-gnu-gcc
+          - goos: darwin
+            goarch: amd64
+            runner: macos-latest
+          - goos: darwin
+            goarch: arm64
+            runner: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" == "release" ]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+          else
+            VERSION=${{ github.event.inputs.version }}
+          fi
+          VERSION_NUM=${VERSION#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_num=$VERSION_NUM" >> $GITHUB_OUTPUT
+
+      - name: Install cross-compiler (linux/arm64)
+        if: matrix.cc != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+          CC: ${{ matrix.cc || '' }}
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          VERSION_PKG=github.com/manetu/security-token/version
+          LDFLAGS="-s -w -X ${VERSION_PKG}.Version=${VERSION}"
+
+          mkdir -p dist
+          go build -ldflags "${LDFLAGS}" -o dist/manetu-security-token .
+
+          cp LICENSE dist/
+
+      - name: Create archive
+        run: |
+          VERSION_NUM=${{ steps.version.outputs.version_num }}
+          cd dist
+          ARCHIVE_NAME="manetu-security-token_${VERSION_NUM}_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz"
+          tar -czvf "${ARCHIVE_NAME}" manetu-security-token LICENSE
+          echo "ARCHIVE_NAME=${ARCHIVE_NAME}" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: manetu-security-token_${{ steps.version.outputs.version_num }}_${{ matrix.goos }}_${{ matrix.goarch }}
+          path: dist/manetu-security-token_${{ steps.version.outputs.version_num }}_${{ matrix.goos }}_${{ matrix.goarch }}.*
+
+  upload-release-assets:
+    name: Upload Release Assets
+    runs-on: ubuntu-latest
+    needs: build-binaries
+    if: github.event_name == 'release'
+    steps:
+      - name: Get version
+        id: version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/}
+          VERSION_NUM=${VERSION#v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "version_num=$VERSION_NUM" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Generate checksums
+        run: |
+          VERSION_NUM=${{ steps.version.outputs.version_num }}
+          cd artifacts
+
+          mkdir -p ../release
+          find . -type f -name "*.tar.gz" -exec cp {} ../release/ \;
+
+          cd ../release
+          sha256sum * > manetu-security-token_${VERSION_NUM}_checksums.txt
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+

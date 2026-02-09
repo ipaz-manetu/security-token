@@ -42,7 +42,7 @@ func main() {
 				Name:  "version",
 				Usage: "Report version and build information",
 				Action: func(c *cli.Context) error {
-					fmt.Printf("manetu-security-token, git %s, goVersion %s, buildDate %s\n", version.GitCommit, version.GoVersion, version.BuildDate)
+					fmt.Printf("manetu-security-token %s, git %s, goVersion %s, buildDate %s\n", version.Version, version.GitCommit, version.GoVersion, version.BuildDate)
 					return nil
 				},
 			},
