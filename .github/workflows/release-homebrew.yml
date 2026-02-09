@@ -95,20 +95,22 @@ jobs:
 
       - name: Update formula in tap
         run: |
+          mkdir -p homebrew-tap/Formula
           cp manetu-security-token.rb homebrew-tap/Formula/manetu-security-token.rb
 
           cd homebrew-tap
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          # Check if there are changes
-          if git diff --quiet Formula/manetu-security-token.rb; then
+          git add Formula/manetu-security-token.rb
+
+          # Check if there are staged changes
+          if git diff --cached --quiet; then
             echo "No changes to formula"
             exit 0
           fi
 
           VERSION=${{ steps.version.outputs.version }}
-          git add Formula/manetu-security-token.rb
           git commit -m "Update manetu-security-token to ${VERSION}"
           git push
 
